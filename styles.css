@@ -1,79 +1,77 @@
-/* 外层大容器：占满屏幕，禁止纵向滚动溢出 */
+/* 容器全屏铺满，允许内容按比例自适应 */
 .stats-dashboard-container {
-    padding: 30px;
+    padding: 20px 30px;
     display: flex;
     flex-direction: column;
     height: 100%;
-    max-height: 100vh;
-    overflow: hidden;
+    box-sizing: border-box;
 }
 
-/* 顶部标题栏 */
+/* 顶部操作栏 */
 .stats-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    margin-bottom: 25px;
     border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: 15px;
     flex-shrink: 0;
 }
 
 .stats-title {
     margin: 0;
-    font-size: 1.8em;
-    font-weight: bold;
-    color: var(--text-normal);
+    font-size: 1.6em;
+    font-weight: 600;
 }
 
 .stats-refresh-btn {
-    padding: 8px 16px;
+    padding: 6px 16px;
     cursor: pointer;
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
     border-radius: 6px;
-    font-weight: 500;
+    border: none;
 }
 
-/* 核心内容区：左右对齐 */
+/* 核心内容区：左右弹性分栏 */
 .stats-content-wrapper {
     display: flex;
     flex-direction: row;
     gap: 30px;
-    flex-grow: 1; /* 撑满底部剩余空间 */
-    min-height: 0; /* 关键：防止 flex 子元素溢出 */
+    flex: 1; 
+    min-height: 0; /* 保持 Flex 弹性的核心魔法 */
 }
 
-/* 左右两个面板框 */
+/* 面板背景与边框 */
 .panel-container {
-    flex: 1; /* 左右各 50% */
+    flex: 1; /* 左右各占 50% 宽度 */
     display: flex;
     flex-direction: column;
     background-color: var(--background-primary-alt);
     border: 1px solid var(--background-modifier-border);
     border-radius: 12px;
     padding: 20px;
-    min-width: 0; /* 防止内容撑破 flex 盒子 */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
 }
 
 .stats-subtitle {
-    margin: 0 0 15px 0;
-    font-size: 1.2em;
+    margin: 0 0 20px 0;
+    font-size: 1.1em;
     color: var(--text-muted);
     text-align: center;
-    flex-shrink: 0;
+    font-weight: 500;
 }
 
-/* 画布的直接包裹层：死锁宽高 */
+/* 画布的直接包裹层：提供相对定位基础 */
 .canvas-wrapper {
     position: relative;
-    flex-grow: 1;
+    flex: 1;
     width: 100%;
     height: 100%;
-    overflow: hidden; /* 绝对禁止内部文字出界 */
+    min-height: 300px; /* 给予一个合理的最小高度保证图表不糊 */
 }
 
-/* 限制原生 Canvas */
+/* 强制 Canvas 听从外层指挥 */
 canvas {
     display: block;
     width: 100% !important;
