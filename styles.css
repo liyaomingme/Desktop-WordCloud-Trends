@@ -1,48 +1,59 @@
-/* 容器全屏铺满 */
+/* 外层大容器：占满屏幕，禁止纵向滚动溢出 */
 .stats-dashboard-container {
-    padding: 20px 30px;
+    padding: 30px;
     display: flex;
     flex-direction: column;
     height: 100%;
+    max-height: 100vh;
+    overflow: hidden;
 }
 
-/* 顶部操作栏 */
+/* 顶部标题栏 */
 .stats-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 25px;
-    border-bottom: 2px solid var(--background-modifier-border);
+    margin-bottom: 20px;
     padding-bottom: 15px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
 }
 
 .stats-title {
     margin: 0;
-    font-size: 1.5em;
-    font-weight: 600;
+    font-size: 1.8em;
+    font-weight: bold;
+    color: var(--text-normal);
 }
 
 .stats-refresh-btn {
-    padding: 6px 16px;
+    padding: 8px 16px;
     cursor: pointer;
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
-    border-radius: 4px;
+    border-radius: 6px;
+    font-weight: 500;
 }
 
-/* 横向分栏核心代码：左右并排 */
+/* 核心内容区：左右对齐 */
 .stats-content-wrapper {
     display: flex;
     flex-direction: row;
     gap: 30px;
-    flex: 1; /* 撑满剩余高度 */
+    flex-grow: 1; /* 撑满底部剩余空间 */
+    min-height: 0; /* 关键：防止 flex 子元素溢出 */
 }
 
-.canvas-container {
-    flex: 1; /* 左右各占 50% 宽度 */
+/* 左右两个面板框 */
+.panel-container {
+    flex: 1; /* 左右各 50% */
     display: flex;
     flex-direction: column;
-    min-height: 400px;
+    background-color: var(--background-primary-alt);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 0; /* 防止内容撑破 flex 盒子 */
 }
 
 .stats-subtitle {
@@ -50,15 +61,21 @@
     font-size: 1.2em;
     color: var(--text-muted);
     text-align: center;
+    flex-shrink: 0;
 }
 
-/* 图表与词云背景框优化 */
-#trend-chart, #word-cloud {
-    flex: 1;
+/* 画布的直接包裹层：死锁宽高 */
+.canvas-wrapper {
+    position: relative;
+    flex-grow: 1;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* 绝对禁止内部文字出界 */
+}
+
+/* 限制原生 Canvas */
+canvas {
+    display: block;
     width: 100% !important;
     height: 100% !important;
-    background-color: var(--background-secondary);
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
 }
