@@ -1,10 +1,13 @@
-/* 容器全屏铺满，允许内容按比例自适应 */
+/* 容器全屏铺满，引入苹果原生系统字体与抗锯齿渲染 */
 .stats-dashboard-container {
     padding: 20px 30px;
     display: flex;
     flex-direction: column;
     height: 100%;
     box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* 顶部操作栏 */
@@ -24,13 +27,29 @@
     font-weight: 600;
 }
 
+/* 按钮：弹簧阻尼动效与质感升级 */
 .stats-refresh-btn {
-    padding: 6px 16px;
+    padding: 8px 20px;
     cursor: pointer;
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
-    border-radius: 6px;
+    border-radius: 8px;
     border: none;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.stats-refresh-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); /* 使用通用科技蓝阴影 */
+    filter: brightness(1.1);
+}
+
+.stats-refresh-btn:active {
+    transform: scale(0.95);
+    box-shadow: 0 1px 2px rgba(0, 122, 255, 0.2);
+    filter: brightness(0.9);
 }
 
 /* 核心内容区：左右弹性分栏 */
@@ -42,16 +61,28 @@
     min-height: 0; /* 保持 Flex 弹性的核心魔法 */
 }
 
-/* 面板背景与边框 */
+/* 面板：毛玻璃与弥散阴影 (Vibrancy) */
 .panel-container {
-    flex: 1; /* 左右各占 50% 宽度 */
+    flex: 1;
     display: flex;
     flex-direction: column;
-    background-color: var(--background-primary-alt);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    background-color: rgba(var(--background-primary-alt-rgb, 255, 255, 255), 0.65); /* 增加透明度兼容 */
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid rgba(142, 142, 147, 0.15); /* 适配深浅色的中性边框 */
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow:
+        0 4px 24px -8px rgba(0, 0, 0, 0.1),
+        0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.4s ease;
+}
+
+.panel-container:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 8px 32px -8px rgba(0, 0, 0, 0.15),
+        0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .stats-subtitle {
@@ -68,7 +99,7 @@
     flex: 1;
     width: 100%;
     height: 100%;
-    min-height: 300px; /* 给予一个合理的最小高度保证图表不糊 */
+    min-height: 300px;
 }
 
 /* 强制 Canvas 听从外层指挥 */
