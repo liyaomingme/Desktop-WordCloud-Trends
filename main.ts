@@ -8,7 +8,8 @@ const VIEW_TYPE_STATS = "desktop-stats-view";
 const STOP_WORDS = new Set([
     'the', 'and', 'for', 'that', 'this', 'with', 'from', 'https', 'com', 'org', 
     'www', 'are', 'can', 'not', 'you', 'your', 'have', 'was', 'but', 'all', 
-    'what', 'http', 'html', 'file', 'png', 'jpg', 'out', 'has', 'will'
+    'what', 'http', 'html', 'file', 'png', 'jpg', 'out', 'has', 'will', 'use',
+    'which', 'when', 'more', 'about', 'their', 'there', 'some'
 ]);
 
 // --- 日期解析引擎 ---
@@ -87,7 +88,7 @@ class DesktopStatsView extends ItemView {
     }
 
     getViewType() { return VIEW_TYPE_STATS; }
-    getDisplayText() { return "桌面端看板"; }
+    getDisplayText() { return "数据看板"; }
     getIcon() { return "monitor"; }
 
     async onOpen() {
@@ -96,7 +97,7 @@ class DesktopStatsView extends ItemView {
         container.addClass('stats-dashboard-container');
 
         const headerDiv = container.createDiv({ cls: 'stats-header-row' });
-        headerDiv.createEl("h2", { text: "知识全景洞察", cls: 'stats-title' });
+        headerDiv.createEl("h2", { text: "知识资产全景透视", cls: 'stats-title' });
         const refreshBtn = headerDiv.createEl("button", { text: "重新抓取数据", cls: 'stats-refresh-btn' });
         
         const contentWrapper = container.createDiv({ cls: 'stats-content-wrapper' });
@@ -107,7 +108,7 @@ class DesktopStatsView extends ItemView {
         const chartCanvas = chartWrapper.createEl("canvas", { attr: { id: "trend-chart" } });
         
         const wordDiv = contentWrapper.createDiv({ cls: 'panel-container' });
-        wordDiv.createEl("h3", { text: "核心概念云图", cls: 'stats-subtitle' });
+        wordDiv.createEl("h3", { text: "核心概念网络", cls: 'stats-subtitle' });
         const wordWrapper = wordDiv.createDiv({ cls: 'canvas-wrapper' });
         const wordCloudCanvas = wordWrapper.createEl("canvas", { attr: { id: "word-cloud" } });
 
@@ -120,13 +121,12 @@ class DesktopStatsView extends ItemView {
             // 1. 苹果风高级折线图绘制
             if (this.chartInstance) this.chartInstance.destroy();
             
-            // 创建平滑的底部渐变色
             const ctx = (chartCanvas as HTMLCanvasElement).getContext('2d');
             let gradientFill = 'rgba(0, 122, 255, 0.1)';
             if (ctx) {
                 gradientFill = ctx.createLinearGradient(0, 0, 0, chartWrapper.clientHeight);
-                gradientFill.addColorStop(0, 'rgba(0, 122, 255, 0.4)'); // 顶部较深
-                gradientFill.addColorStop(1, 'rgba(0, 122, 255, 0.0)'); // 底部透明
+                gradientFill.addColorStop(0, 'rgba(0, 122, 255, 0.35)'); // 顶部科技蓝
+                gradientFill.addColorStop(1, 'rgba(0, 122, 255, 0.0)');  // 底部无缝融入背景
             }
 
             this.chartInstance = new Chart(chartCanvas as any, {
@@ -134,33 +134,31 @@ class DesktopStatsView extends ItemView {
                 data: {
                     labels: chartLabels,
                     datasets: [{
-                        label: '新增笔记',
+                        label: '新增笔记数',
                         data: chartValues,
-                        borderColor: '#007AFF', // 经典的纯净科技蓝
+                        borderColor: '#007AFF', // 苹果生态经典蓝
                         backgroundColor: gradientFill,
-                        borderWidth: 3, // 加粗线条更有质感
-                        pointRadius: 0, // 默认隐藏生硬的数据点
-                        pointHoverRadius: 6, // 鼠标悬停时才优雅地浮现
+                        borderWidth: 2.5,
+                        pointRadius: 0, // 隐藏静态数据点
+                        pointHoverRadius: 6,
                         pointBackgroundColor: '#FFFFFF',
                         pointBorderColor: '#007AFF',
                         pointBorderWidth: 2,
-                        tension: 0.4, // 极其平滑的曲线过渡
+                        tension: 0.4, // 极其平滑的曲线
                         fill: true
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false }, // 极佳的悬停交互体验
+                    interaction: { mode: 'index', intersect: false },
                     plugins: { 
                         legend: { display: false },
-                        tooltip: { // 高级悬停提示框
-                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                        tooltip: { 
+                            backgroundColor: 'rgba(0, 0, 0, 0.75)',
                             padding: 12,
                             cornerRadius: 8,
                             displayColors: false,
-                            titleFont: { size: 14, family: 'sans-serif' },
-                            bodyFont: { size: 14, family: 'sans-serif' }
                         }
                     },
                     scales: { 
@@ -171,7 +169,7 @@ class DesktopStatsView extends ItemView {
                         },
                         y: { 
                             beginAtZero: true, 
-                            border: { display: false }, // 干掉Y轴那根突兀的主线
+                            border: { display: false }, 
                             grid: { color: 'rgba(142, 142, 147, 0.1)' }, // 极淡的高级横向辅助线
                             ticks: { precision: 0, color: '#8E8E93', padding: 10 }
                         }
@@ -179,31 +177,30 @@ class DesktopStatsView extends ItemView {
                 }
             });
 
-            // 2. 高级质感词云绘制
+            // 2. 高级质感纯色渐变词云绘制
             const maxFreq = sortedWords.length > 0 ? sortedWords[0][1] : 1;
             wordCloudCanvas.width = wordWrapper.clientWidth;
             wordCloudCanvas.height = wordWrapper.clientHeight;
             
-            const minSize = 14;
-            const maxSize = 75;
+            const minSize = 16;
+            const maxSize = 80;
 
             WordCloud(wordCloudCanvas, {
                 list: sortedWords,
-                gridSize: 8,
+                gridSize: 10, // 增加间距留白，提升呼吸感
                 weightFactor: function (size) { 
                     const normalized = size / maxFreq;
                     return (normalized * (maxSize - minSize)) + minSize; 
                 }, 
-                // 使用极其饱满厚重的英文字体族
-                fontFamily: 'Impact, "Arial Black", "Helvetica Neue", sans-serif',
+                // 饱满厚重的无衬线字体族
+                fontFamily: 'Impact, "Arial Black", "Helvetica Neue", "PingFang SC", sans-serif',
                 fontWeight: '900', 
-                // 核心渐变算法：根据计算出的真实字号，动态赋予透明度
+                // 动态透明度纯蓝算法
                 color: function(word: string, weight: number, fontSize: number) {
-                    // 让透明度在 0.35 到 1.0 之间丝滑过渡
-                    const opacity = 0.35 + 0.65 * ((fontSize - minSize) / (maxSize - minSize));
-                    return `rgba(0, 122, 255, ${opacity})`; // 与折线图完美呼应的科技蓝纯色系
+                    const opacity = 0.30 + 0.70 * ((fontSize - minSize) / (maxSize - minSize));
+                    return `rgba(0, 122, 255, ${opacity})`;
                 },
-                rotateRatio: 0, // 坚持水平排版，最像苹果的设计语言
+                rotateRatio: 0, // 坚持水平排版
                 shrinkToFit: true, 
                 drawOutOfBound: false, 
                 backgroundColor: 'transparent'
