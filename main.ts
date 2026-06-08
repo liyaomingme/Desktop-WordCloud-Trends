@@ -2,29 +2,19 @@ import { App, ItemView, Plugin, WorkspaceLeaf } from 'obsidian';
 import { Chart } from 'chart.js/auto';
 import WordCloud from 'wordcloud';
 
-const VIEW_TYPE_STATS = "stats-dashboard-view";
+const VIEW_TYPE_STATS = "desktop-stats-view";
 
-// --- 核心组件 1：极强兼容的日期解析引擎 ---
+// --- 日期解析引擎 ---
 function parseMessyDate(dateStr: string): string | null {
     const cleanStr = dateStr.replace(/[^\d./-]/g, '');
-    
-    // 1. 标准格式 (2026.06.01, 2026-06-01, 2026/06/01)
     let match = cleanStr.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
     if (match) return formatStandardDate(match[1], match[2], match[3]);
-
-    // 2. 8位纯数字 (20260601)
     match = cleanStr.match(/^(\d{4})(\d{2})(\d{2})$/);
     if (match) return formatStandardDate(match[1], match[2], match[3]);
-
-    // 3. 6位纯数字 (260601 -> 2026-06-01)
     match = cleanStr.match(/^(\d{2})(\d{2})(\d{2})$/);
     if (match) return formatStandardDate(`20${match[1]}`, match[2], match[3]);
-
-    // 4. 4位极简数字 (2661 -> 2026-06-01) 
     match = cleanStr.match(/^(\d{2})(\d{1})(\d{1})$/);
     if (match) return formatStandardDate(`20${match[1]}`, match[2], match[3]);
-
-    // 5. 5位数字歧义处理 (例如 26101 或 26112)
     match = cleanStr.match(/^(\d{2})(\d{1,2})(\d{1,2})$/);
     if (match && cleanStr.length === 5) {
         const monthDouble = parseInt(cleanStr.substring(2, 4));
@@ -33,7 +23,6 @@ function parseMessyDate(dateStr: string): string | null {
         }
         return formatStandardDate(`20${match[1]}`, cleanStr.substring(2, 3), cleanStr.substring(3, 5));
     }
-
     return null; 
 }
 
@@ -44,14 +33,13 @@ function formatStandardDate(year: string, month: string, day: string): string {
     return `${y}-${m}-${d}`;
 }
 
-// --- 核心组件 2：数据提取与统计 ---
+// --- 数据分析引擎 ---
 async function analyzeVaultData(app: App) {
     const files = app.vault.getMarkdownFiles();
     const wordCounts = new Map<string, number>();
     const trendData: Record<string, number> = {};
 
     for (const file of files) {
-        // A. 提取日期用于趋势图
         let noteDate = parseMessyDate(file.basename);
         if (!noteDate) {
             const createTime = new Date(file.stat.ctime);
@@ -59,16 +47,13 @@ async function analyzeVaultData(app: App) {
         }
         trendData[noteDate] = (trendData[noteDate] || 0) + 1;
 
-        // B. 提取文本用于词云
         const content = await app.vault.cachedRead(file);
         const cleanText = content
-            .replace(/```[\s\S]*?```/g, '') // 移除代码块
-            .replace(/---[\s\S]*?---/, '')  // 移除 YAML Frontmatter
-            .replace(/[#*`>\[\]()]/g, '');  // 移除常见特殊符号
+            .replace(/```[\s\S]*?```/g, '')
+            .replace(/---[\s\S]*?---/, '')
+            .replace(/[#*`>\[\]()]/g, '');
 
-        // 提取中文字符(2个字及以上) 和 英文单词(3个字母及以上)
         const words = cleanText.match(/[\u4e00-\u9fa5]{2,}|\b[a-zA-Z]{3,}\b/g) || [];
-        
         for (const word of words) {
             const w = word.toLowerCase();
             wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
@@ -76,19 +61,15 @@ async function analyzeVaultData(app: App) {
     }
 
     const sortedDates = Object.keys(trendData).sort();
-    const chartLabels = sortedDates;
-    const chartValues = sortedDates.map(date => trendData[date]);
-
-    // 取出现频次最高的 120 个词生成词云
-    const sortedWords = Array.from(wordCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 120);
-
-    return { chartLabels, chartValues, sortedWords };
+    return {
+        chartLabels: sortedDates,
+        chartValues: sortedDates.map(date => trendData[date]),
+        sortedWords: Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 150) // 桌面端可展示更多词汇
+    };
 }
 
-// --- 核心组件 3：侧边栏面板视图 ---
-class StatsDashboardView extends ItemView {
+// --- 桌面端视图 ---
+class DesktopStatsView extends ItemView {
     chartInstance: any = null;
 
     constructor(leaf: WorkspaceLeaf) {
@@ -96,25 +77,31 @@ class StatsDashboardView extends ItemView {
     }
 
     getViewType() { return VIEW_TYPE_STATS; }
-    getDisplayText() { return "知识产出洞察"; }
-    getIcon() { return "line-chart"; }
+    getDisplayText() { return "桌面端看板"; }
+    getIcon() { return "monitor"; }
 
     async onOpen() {
         const container = this.containerEl.children[1];
         container.empty();
         container.addClass('stats-dashboard-container');
 
+        // 顶部栏
         const headerDiv = container.createDiv({ cls: 'stats-header-row' });
-        headerDiv.createEl("h3", { text: "笔记数据看板", cls: 'stats-title' });
+        headerDiv.createEl("h3", { text: "笔记数据全景透视", cls: 'stats-title' });
         const refreshBtn = headerDiv.createEl("button", { text: "刷新数据", cls: 'stats-refresh-btn' });
         
-        const chartDiv = container.createDiv({ cls: 'canvas-container' });
-        chartDiv.createEl("h4", { text: "产出趋势 (按日)", cls: 'stats-subtitle' });
+        // 横向分栏包裹器
+        const contentWrapper = container.createDiv({ cls: 'stats-content-wrapper' });
+
+        // 左侧：趋势图
+        const chartDiv = contentWrapper.createDiv({ cls: 'canvas-container' });
+        chartDiv.createEl("h4", { text: "产出趋势波折线", cls: 'stats-subtitle' });
         const chartCanvas = chartDiv.createEl("canvas", { attr: { id: "trend-chart" } });
         
-        const wordDiv = container.createDiv({ cls: 'canvas-container', attr: { style: 'margin-top: 25px;' } });
-        wordDiv.createEl("h4", { text: "全局核心词云", cls: 'stats-subtitle' });
-        const wordCloudCanvas = wordDiv.createEl("canvas", { attr: { id: "word-cloud", width: "300", height: "300" } });
+        // 右侧：词云
+        const wordDiv = contentWrapper.createDiv({ cls: 'canvas-container' });
+        wordDiv.createEl("h4", { text: "全局核心热词", cls: 'stats-subtitle' });
+        const wordCloudCanvas = wordDiv.createEl("canvas", { attr: { id: "word-cloud" } });
 
         const renderData = async () => {
             refreshBtn.innerText = "数据抓取中...";
@@ -122,20 +109,19 @@ class StatsDashboardView extends ItemView {
             
             const { chartLabels, chartValues, sortedWords } = await analyzeVaultData(this.app);
 
-            // 绘制趋势波折线图
             if (this.chartInstance) this.chartInstance.destroy();
             this.chartInstance = new Chart(chartCanvas, {
                 type: 'line',
                 data: {
                     labels: chartLabels,
                     datasets: [{
-                        label: '每日新增笔记数',
+                        label: '笔记产量',
                         data: chartValues,
-                        borderColor: '#a882ff', 
-                        backgroundColor: 'rgba(168, 130, 255, 0.2)',
+                        borderColor: '#3b82f6', 
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
                         borderWidth: 2,
-                        pointRadius: 1, // 缩小数据点，让折线更平滑清爽
-                        tension: 0.3,
+                        pointRadius: 2,
+                        tension: 0.4,
                         fill: true
                     }]
                 },
@@ -144,20 +130,19 @@ class StatsDashboardView extends ItemView {
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: { 
-                        x: { display: false }, // 移动端隐藏 X 轴密集标签
-                        y: { beginAtZero: true, ticks: { precision: 0 } } // Y轴只显示整数
+                        x: { display: true }, // 桌面端空间大，开启 X 轴日期显示
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
                     } 
                 }
             });
 
-            // 绘制词云
             WordCloud(wordCloudCanvas, {
                 list: sortedWords,
                 gridSize: Math.round(16 * wordCloudCanvas.offsetWidth / 1024),
-                weightFactor: function (size) { return Math.pow(size, 0.8) * 2.5; }, 
+                weightFactor: function (size) { return Math.pow(size, 0.85) * 3; }, 
                 fontFamily: 'Inter, "PingFang SC", sans-serif',
                 color: 'random-dark',
-                rotateRatio: 0, // 保持文字全部水平展示
+                rotateRatio: 0,
                 backgroundColor: 'transparent'
             });
 
@@ -166,17 +151,14 @@ class StatsDashboardView extends ItemView {
         };
 
         refreshBtn.addEventListener('click', renderData);
-        await renderData(); // 首次打开自动渲染
+        await renderData();
     }
 }
 
-// --- 插件注册入口 ---
-export default class StatsDashboardPlugin extends Plugin {
+export default class DesktopStatsPlugin extends Plugin {
     async onload() {
-        this.registerView(VIEW_TYPE_STATS, (leaf) => new StatsDashboardView(leaf));
-
-        // 在左侧边栏添加一个一键呼出按钮
-        this.addRibbonIcon('line-chart', '打开数据看板', () => {
+        this.registerView(VIEW_TYPE_STATS, (leaf) => new DesktopStatsView(leaf));
+        this.addRibbonIcon('monitor', '打开桌面端看板', () => {
             this.activateView();
         });
     }
@@ -184,9 +166,8 @@ export default class StatsDashboardPlugin extends Plugin {
     async activateView() {
         const { workspace } = this.app;
         let leaf = workspace.getLeavesOfType(VIEW_TYPE_STATS)[0];
-        
         if (!leaf) {
-            leaf = workspace.getRightLeaf(false);
+            leaf = workspace.getLeaf('tab'); // 桌面端建议在新标签页打开，而非侧边栏
             await leaf.setViewState({ type: VIEW_TYPE_STATS, active: true });
         }
         workspace.revealLeaf(leaf);
