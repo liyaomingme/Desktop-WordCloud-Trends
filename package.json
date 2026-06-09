@@ -1,6 +1,6 @@
 {
   "name": "Desktop-WordCloud-Trends",
-  "version": "1.6.0",
+  "version": "2.3.0",
   "description": "Desktop WordCloud & Trends for Obsidian",
   "main": "main.js",
   "scripts": {
@@ -8,11 +8,9 @@
     "build": "node esbuild.config.mjs production"
   },
   "dependencies": {
-    "d3": "^7.8.5",
     "wordcloud": "^1.2.2"
   },
   "devDependencies": {
-    "@types/d3": "^7.4.3",
     "@types/node": "^18.0.0",
     "builtin-modules": "^3.3.0",
     "esbuild": "0.17.3",
