@@ -16,17 +16,14 @@ const STOP_WORDS = new Set([
     'cells', 'images', '例如', '问题', '解答', 'pdf', 'pdf文档'
 ]);
 
-// --- 深度自然语言分词与时间轴引擎 ---
+// --- 深度自然语言分词引擎 (纯净极速版) ---
 async function analyzeVaultContent(app: App) {
     const files = app.vault.getMarkdownFiles();
-    const wordData = new Map<string, { count: number, files: Set<TFile>, latestTime: number }>();
+    const wordData = new Map<string, { count: number, files: Set<TFile> }>();
     
     const segmenter = new Intl.Segmenter('zh-CN', { granularity: 'word' });
-    let globalMinTime = Infinity;
-    let globalMaxTime = 0;
 
     for (const file of files) {
-        const fileTime = file.stat.mtime; // 取笔记最后修改时间作为新鲜度指标
         const content = await app.vault.cachedRead(file);
         
         const cleanText = content
@@ -48,68 +45,22 @@ async function analyzeVaultContent(app: App) {
             const isChinese = /[\u4e00-\u9fa5]/.test(w);
             if ((isChinese && w.length >= 2) || (!isChinese && w.length >= 3 && w.length <= 20)) {
                 if (!wordData.has(w)) {
-                    wordData.set(w, { count: 0, files: new Set(), latestTime: 0 });
+                    wordData.set(w, { count: 0, files: new Set() });
                 }
                 const entry = wordData.get(w)!;
                 entry.count++;
                 entry.files.add(file);
-                // 更新该词汇的最高活跃时间
-                if (fileTime > entry.latestTime) {
-                    entry.latestTime = fileTime;
-                }
             }
         }
     }
 
-    // 筛选 Top 75 并计算时间极值，用于色温映射
-    const sortedData = Array.from(wordData.entries())
-                            .sort((a, b) => b[1].count - a[1].count)
-                            .slice(0, 75);
-
-    sortedData.forEach(item => {
-        if (item[1].latestTime > globalMaxTime) globalMaxTime = item[1].latestTime;
-        if (item[1].latestTime < globalMinTime) globalMinTime = item[1].latestTime;
-    });
-
-    return {
-        heatmapWords: sortedData.map(([word, data]) => ({ word, value: data.count, files: Array.from(data.files), latestTime: data.latestTime })),
-        globalMinTime,
-        globalMaxTime
-    };
+    return Array.from(wordData.entries())
+                .sort((a, b) => b[1].count - a[1].count)
+                .slice(0, 75) 
+                .map(([word, data]) => ({ word, value: data.count, files: Array.from(data.files) }));
 }
 
-// --- 热度色温映射引擎 (Thermal Color Mapping) ---
-function getThermalColors(value: number, maxVal: number, latestTime: number, minTime: number, maxTime: number) {
-    const opacity = 0.45 + (Math.min(value / maxVal, 1) * 0.55);
-    let freshness = 0.5;
-    if (maxTime > minTime) {
-        freshness = (latestTime - minTime) / (maxTime - minTime);
-    }
-
-    // 0.0 -> 沉淀资产 -> 深靛蓝 Indigo (88, 86, 214)
-    // 0.5 -> 核心常态 -> 经典蓝 Apple Blue (0, 122, 255)
-    // 1.0 -> 最新焦点 -> 青冰色 Cyan (50, 173, 230)
-    let r, g, b;
-    if (freshness < 0.5) {
-        const t = freshness * 2; 
-        r = Math.round(88 + (0 - 88) * t);
-        g = Math.round(86 + (122 - 86) * t);
-        b = Math.round(214 + (255 - 214) * t);
-    } else {
-        const t = (freshness - 0.5) * 2; 
-        r = Math.round(0 + (50 - 0) * t);
-        g = Math.round(122 + (173 - 122) * t);
-        b = Math.round(255 + (230 - 255) * t);
-    }
-    
-    return {
-        colorBase: `rgba(${r}, ${g}, ${b}, ${opacity})`,
-        colorHover: `rgba(${r}, ${g}, ${b}, 1)`, // 满透明度用于高亮
-        glowColor: `rgba(${r}, ${g}, ${b}, 0.35)`
-    };
-}
-
-// --- 上下文溯源 Modal (保持优雅秒开) ---
+// --- 上下文溯源 Modal ---
 class WordContextModal extends Modal {
     word: string;
     files: TFile[];
@@ -133,7 +84,7 @@ class WordContextModal extends Modal {
 
         contentEl.createEl('h2', { 
             text: `「${this.word}」`,
-            attr: { style: 'margin: 0 0 8px 0; font-size: 28px; font-weight: 700; color: var(--interactive-accent); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -0.02em;' }
+            attr: { style: 'margin: 0 0 8px 0; font-size: 28px; font-weight: 700; color: var(--text-normal); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -0.02em;' }
         });
         contentEl.createEl('p', {
             text: `核心正文共在 ${this.files.length} 篇笔记中被提及：`,
@@ -150,7 +101,7 @@ class WordContextModal extends Modal {
             });
             
             card.addEventListener('mouseenter', () => {
-                card.style.borderColor = 'var(--interactive-accent)';
+                card.style.borderColor = 'var(--text-muted)';
                 card.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.05)';
             });
             card.addEventListener('mouseleave', () => {
@@ -189,7 +140,7 @@ class WordContextModal extends Modal {
                     snippetDiv.appendChild(document.createTextNode('"...'));
                     parts.forEach(part => {
                         if (part.toLowerCase() === this.word.toLowerCase()) {
-                            snippetDiv.createEl('span', { text: part, attr: { style: 'color: var(--interactive-accent); font-weight: 600; background: rgba(0, 122, 255, 0.1); padding: 2px 4px; border-radius: 4px;' } });
+                            snippetDiv.createEl('span', { text: part, attr: { style: 'color: var(--text-normal); font-weight: 700; background: var(--background-modifier-hover); padding: 2px 4px; border-radius: 4px;' } });
                         } else {
                             snippetDiv.appendChild(document.createTextNode(part));
                         }
@@ -233,7 +184,7 @@ class DesktopStatsHeatmapView extends ItemView {
 
         const headerDiv = container.createDiv({ 
             attr: { 
-                style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.9; transition: opacity 0.2s ease;',
+                style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.85; transition: opacity 0.2s ease;',
                 title: '点击重新深入扫描核心正文'
             } 
         });
@@ -241,7 +192,7 @@ class DesktopStatsHeatmapView extends ItemView {
         const titleDiv = headerDiv.createDiv({
             attr: { style: 'display: flex; align-items: center; white-space: nowrap;' }
         });
-        const iconSpan = titleDiv.createEl('span', { attr: { style: 'width: 24px; height: 24px; color: var(--interactive-accent); margin-right: 12px; display: flex; align-items: center;' } });
+        const iconSpan = titleDiv.createEl('span', { attr: { style: 'width: 24px; height: 24px; color: var(--text-normal); margin-right: 12px; display: flex; align-items: center;' } });
         setIcon(iconSpan, 'activity'); 
         
         const titleText = titleDiv.createEl("h1", { 
@@ -252,17 +203,17 @@ class DesktopStatsHeatmapView extends ItemView {
         });
 
         const startScanning = async () => {
-            headerDiv.style.opacity = '0.4';
+            headerDiv.style.opacity = '0.3';
             titleText.innerText = "Scanning Brain...";
             headerDiv.style.pointerEvents = 'none';
             await this.renderWords();
             headerDiv.style.pointerEvents = 'auto';
             titleText.innerText = "Knowledge Insights";
-            headerDiv.style.opacity = '0.9';
+            headerDiv.style.opacity = '0.85';
         }
         
         headerDiv.addEventListener('mouseenter', () => headerDiv.style.opacity = '1');
-        headerDiv.addEventListener('mouseleave', () => headerDiv.style.opacity = '0.9');
+        headerDiv.addEventListener('mouseleave', () => headerDiv.style.opacity = '0.85');
         headerDiv.addEventListener('click', startScanning);
 
         this.wordsCanvas = container.createDiv({ 
@@ -278,7 +229,7 @@ class DesktopStatsHeatmapView extends ItemView {
         if (!this.wordsCanvas) return;
         this.wordsCanvas.empty();
         
-        const { heatmapWords, globalMinTime, globalMaxTime } = await analyzeVaultContent(this.app);
+        const heatmapWords = await analyzeVaultContent(this.app);
 
         if (heatmapWords.length === 0) {
             this.wordsCanvas.createEl("div", { text: "暂无有效术语积累", attr: { style: 'color: var(--text-muted); font-size: 14px;' } });
@@ -288,22 +239,21 @@ class DesktopStatsHeatmapView extends ItemView {
         const maxWordCount = heatmapWords[0].value;
         const domNodes: any[] = [];
 
-        // 第一次循环：生成 DOM 与原始样式，并存入数组以便交互联动
-        heatmapWords.forEach(({word, value, files, latestTime}) => {
+        heatmapWords.forEach(({word, value, files}) => {
             const wordEl = this.wordsCanvas.createDiv();
             wordEl.setText(word);
             
-            // 计算热度色温
-            const { colorBase, colorHover, glowColor } = getThermalColors(value, maxWordCount, latestTime, globalMinTime, globalMaxTime);
             const fontSize = Math.max(14, Math.min(46, 14 + (value/maxWordCount)*32));
             const fontWeight = value > maxWordCount * 0.6 ? '700' : (value > maxWordCount * 0.3 ? '600' : '500');
             
+            // 默认状态：高级深灰色
             wordEl.setAttr("style", `
-                color: ${colorBase}; 
+                color: var(--text-normal);
+                opacity: 0.75;
                 font-size: ${fontSize}px;
                 font-weight: ${fontWeight};
                 cursor: pointer;
-                transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+                transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
                 line-height: 1.1;
                 user-select: none;
                 letter-spacing: -0.01em;
@@ -313,9 +263,6 @@ class DesktopStatsHeatmapView extends ItemView {
             domNodes.push({ 
                 el: wordEl, 
                 files: new Set(files.map(f => f.path)), 
-                colorBase, 
-                colorHover,
-                glowColor,
                 word
             });
 
@@ -324,7 +271,7 @@ class DesktopStatsHeatmapView extends ItemView {
             });
         });
 
-        // 核心交互：神经元共现聚光灯联动
+        // 核心交互：高级灰度聚光灯联动 (Scale 与 Opacity)
         domNodes.forEach(node => {
             node.el.addEventListener('mouseenter', () => {
                 const targetFiles = node.files;
@@ -339,35 +286,34 @@ class DesktopStatsHeatmapView extends ItemView {
                     }
 
                     if (other === node) {
-                        // 当前悬停的词：最大化发光
-                        other.el.style.transform = 'scale(1.1) translateY(-4px)';
-                        other.el.style.color = other.colorHover;
+                        // 当前悬停的词：稍微放大，最醒目的实心色
+                        other.el.style.transform = 'scale(1.15) translateY(-2px)';
                         other.el.style.opacity = '1';
-                        other.el.style.textShadow = `0 12px 24px ${other.glowColor}`;
+                        other.el.style.color = 'var(--text-normal)';
+                        other.el.style.textShadow = '0 8px 24px rgba(0,0,0,0.1)';
                     } else if (isCoOccurring) {
-                        // 共现词汇（神经元联动）：微微浮起并亮起
-                        other.el.style.transform = 'scale(1.03)';
-                        other.el.style.color = other.colorHover;
-                        other.el.style.opacity = '0.85';
-                        other.el.style.textShadow = '0 4px 12px rgba(0,0,0,0.06)';
-                    } else {
-                        // 无关词汇：深海级暗淡
-                        other.el.style.transform = 'scale(0.96)';
-                        other.el.style.opacity = '0.12';
+                        // 共现词汇（浅灰色）：退居二线，保持连接感
+                        other.el.style.transform = 'scale(1)'; 
+                        other.el.style.opacity = '0.45'; // 降低透明度变成浅灰
+                        other.el.style.color = 'var(--text-muted)';
                         other.el.style.textShadow = 'none';
-                        other.el.style.filter = 'grayscale(0.5)';
+                    } else {
+                        // 无关词汇（背景虚化）：缩小，极度暗淡
+                        other.el.style.transform = 'scale(0.9)';
+                        other.el.style.opacity = '0.08';
+                        other.el.style.color = 'var(--text-faint)';
+                        other.el.style.textShadow = 'none';
                     }
                 });
             });
 
             node.el.addEventListener('mouseleave', () => {
-                // 鼠标移出，全部恢复原本的色温与透明度
+                // 鼠标移出，全部恢复为默认的高级深灰色
                 domNodes.forEach(other => {
                     other.el.style.transform = 'scale(1) translateY(0)';
-                    other.el.style.color = other.colorBase;
-                    other.el.style.opacity = '1'; // 基础透明度包含在 colorBase 中
+                    other.el.style.opacity = '0.75';
+                    other.el.style.color = 'var(--text-normal)';
                     other.el.style.textShadow = 'none';
-                    other.el.style.filter = 'none';
                 });
             });
         });
