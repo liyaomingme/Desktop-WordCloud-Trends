@@ -12,7 +12,7 @@ const STOP_WORDS = new Set([
     '可以说', '这样', '很多', '非常', '进行', '然后'
 ]);
 
-// --- 数据分析引擎 (追踪文件来源与上下文片段) ---
+// --- 数据分析引擎 ---
 async function analyzeVaultData(app: App) {
     const files = app.vault.getMarkdownFiles();
     const wordData = new Map<string, { count: number, files: Set<TFile> }>();
@@ -47,10 +47,10 @@ async function analyzeVaultData(app: App) {
 // --- 颜色引擎 ---
 function getTextOpacity(value: number, max: number): number {
     const ratio = Math.min(value / max, 1);
-    return 0.45 + (ratio * 0.55); // 确保浅色模式下最低透明度也清晰可读
+    return 0.45 + (ratio * 0.55); 
 }
 
-// --- 核心功能：沉浸式上下文溯源 Modal ---
+// --- 核心修复：异步渲染防卡顿的上下文溯源 Modal ---
 class WordContextModal extends Modal {
     word: string;
     files: TFile[];
@@ -61,7 +61,7 @@ class WordContextModal extends Modal {
         this.files = files;
     }
 
-    async onOpen() {
+    onOpen() {
         const { contentEl } = this;
         contentEl.empty();
         
@@ -73,69 +73,78 @@ class WordContextModal extends Modal {
         this.modalEl.style.boxShadow = '0 20px 40px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)';
         this.modalEl.style.border = '1px solid var(--background-modifier-border)';
 
+        // 头部标题
         contentEl.createEl('h2', { 
             text: `「${this.word}」`,
             attr: { style: 'margin: 0 0 8px 0; font-size: 28px; font-weight: 700; color: var(--interactive-accent); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -0.02em;' }
         });
         contentEl.createEl('p', {
-            text: `在 ${this.files.length} 篇笔记中被提及`,
+            text: `在 ${this.files.length} 篇笔记中被提及：`,
             attr: { style: 'margin: 0 0 24px 0; color: var(--text-muted); font-size: 15px; font-weight: 500;' }
         });
 
+        // 滚动列表容器
         const listContainer = contentEl.createDiv({
             attr: { style: 'max-height: 60vh; overflow-y: auto; padding-right: 12px; display: flex; flex-direction: column; gap: 16px;' }
         });
 
-        this.app.workspace.addDomBatchUpdate(async () => {
-            for (const file of this.files) {
-                const content = await this.app.vault.cachedRead(file);
-                
-                const safeWord = this.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
-                const regex = new RegExp(`.{0,40}${safeWord}.{0,40}`, 'gi');
-                const matches = content.match(regex) || [];
+        // 核心修正：取消全局 Await 阻塞，采用并发异步渲染，保证列表秒开
+        this.files.forEach(async (file) => {
+            // 1. 同步生成文件卡片，无论内容多大，文件名绝对能瞬间显示
+            const card = listContainer.createDiv({
+                attr: { style: 'background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease;' }
+            });
+            
+            card.addEventListener('mouseenter', () => {
+                card.style.borderColor = 'var(--interactive-accent)';
+                card.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.05)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.borderColor = 'var(--background-modifier-border)';
+                card.style.boxShadow = 'none';
+            });
 
-                if (matches.length > 0) {
-                    const card = listContainer.createDiv({
-                        attr: { style: 'background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease;' }
-                    });
+            // 点击卡片：在后台打开文件并关闭弹窗
+            card.addEventListener('click', async () => {
+                const leaf = this.app.workspace.getLeaf(false);
+                await leaf.openFile(file);
+                this.close(); 
+            });
+
+            // 渲染文件名
+            const fileTitle = card.createEl('div', {
+                attr: { style: 'font-weight: 600; font-size: 16px; color: var(--text-normal); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; display: flex; align-items: center;' }
+            });
+            const fileIconSpan = fileTitle.createEl('span', { attr: { style: 'margin-right: 8px; opacity: 0.6; display: flex; align-items: center;' } });
+            setIcon(fileIconSpan, 'file-text');
+            fileTitle.appendChild(document.createTextNode(file.basename));
+
+            // 2. 异步拉取上下文并安全正则匹配
+            const rawContent = await this.app.vault.cachedRead(file);
+            // 核心修正：将换行符替换为空格，彻底解决跨行导致正则匹配失败的问题
+            const content = rawContent.replace(/\s+/g, ' '); 
+            
+            const safeWord = this.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+            const regex = new RegExp(`.{0,40}${safeWord}.{0,40}`, 'gi');
+            const matches = content.match(regex) || [];
+
+            if (matches.length > 0) {
+                const snippetWrapper = card.createDiv({ attr: { style: 'margin-top: 12px; display: flex; flex-direction: column; gap: 8px;' } });
+                const displayMatches = matches.slice(0, 2); // 每篇文章最多展示 2 处上下文，保持界面清爽
+
+                for (let match of displayMatches) {
+                    const snippetDiv = snippetWrapper.createDiv({ attr: { style: 'font-size: 14px; color: var(--text-muted); line-height: 1.5; background: var(--background-secondary); padding: 10px 14px; border-radius: 8px;' } });
                     
-                    card.addEventListener('mouseenter', () => {
-                        card.style.borderColor = 'var(--interactive-accent)';
-                        card.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.05)';
+                    const parts = match.split(new RegExp(`(${safeWord})`, 'gi'));
+                    snippetDiv.appendChild(document.createTextNode('"...'));
+                    parts.forEach(part => {
+                        if (part.toLowerCase() === this.word.toLowerCase()) {
+                            snippetDiv.createEl('span', { text: part, attr: { style: 'color: var(--interactive-accent); font-weight: 600; background: rgba(0, 122, 255, 0.1); padding: 2px 4px; border-radius: 4px;' } });
+                        } else {
+                            snippetDiv.appendChild(document.createTextNode(part));
+                        }
                     });
-                    card.addEventListener('mouseleave', () => {
-                        card.style.borderColor = 'var(--background-modifier-border)';
-                        card.style.boxShadow = 'none';
-                    });
-
-                    card.addEventListener('click', async () => {
-                        const leaf = this.app.workspace.getLeaf(false);
-                        await leaf.openFile(file);
-                        this.close(); 
-                    });
-
-                    const fileTitle = card.createEl('div', {
-                        attr: { style: 'font-weight: 600; font-size: 16px; margin-bottom: 12px; color: var(--text-normal); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; display: flex; align-items: center;' }
-                    });
-                    const fileIconSpan = fileTitle.createEl('span', { attr: { style: 'margin-right: 8px; opacity: 0.6; display: flex; align-items: center;' } });
-                    setIcon(fileIconSpan, 'file-text');
-                    fileTitle.appendChild(document.createTextNode(file.basename));
-
-                    const displayMatches = matches.slice(0, 3);
-                    for (let match of displayMatches) {
-                        const snippetDiv = card.createDiv({ attr: { style: 'font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 8px; background: var(--background-secondary); padding: 8px 12px; border-radius: 8px;' } });
-                        
-                        const parts = match.split(new RegExp(`(${safeWord})`, 'gi'));
-                        snippetDiv.appendChild(document.createTextNode('"...'));
-                        parts.forEach(part => {
-                            if (part.toLowerCase() === this.word.toLowerCase()) {
-                                snippetDiv.createEl('span', { text: part, attr: { style: 'color: var(--interactive-accent); font-weight: 600;' } });
-                            } else {
-                                snippetDiv.appendChild(document.createTextNode(part));
-                            }
-                        });
-                        snippetDiv.appendChild(document.createTextNode('..."'));
-                    }
+                    snippetDiv.appendChild(document.createTextNode('..."'));
                 }
             }
         });
@@ -146,7 +155,7 @@ class WordContextModal extends Modal {
     }
 }
 
-// --- 桌面端视图 ---
+// --- 桌面端视图 (排版保留原版的完美状态) ---
 class DesktopStatsHeatmapView extends ItemView {
     constructor(leaf: WorkspaceLeaf) {
         super(leaf);
@@ -161,7 +170,6 @@ class DesktopStatsHeatmapView extends ItemView {
         container.empty();
         container.addClass('stats-typographic-dashboard');
 
-        // 顶级容器排版优化：适度的留白
         container.setAttr('style', `
             padding: 32px;
             display: flex;
@@ -173,7 +181,6 @@ class DesktopStatsHeatmapView extends ItemView {
             background-color: var(--background-secondary);
         `);
 
-        // --- 标题区排版重构：Apple 官网级精细排版 ---
         const headerDiv = container.createDiv({ 
             attr: { 
                 style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-shrink: 0; cursor: pointer; user-select: none; opacity: 0.9; transition: opacity 0.2s ease;',
@@ -185,9 +192,8 @@ class DesktopStatsHeatmapView extends ItemView {
             attr: { style: 'display: flex; align-items: center; white-space: nowrap;' }
         });
         const iconSpan = titleDiv.createEl('span', { attr: { style: 'width: 24px; height: 24px; color: var(--interactive-accent); margin-right: 12px; display: flex; align-items: center;' } });
-        setIcon(iconSpan, 'activity'); // 使用更精致的 activity 图标
+        setIcon(iconSpan, 'activity'); 
         
-        // 字体收敛：去掉 850 字重，改为 700 + -0.02em 紧凑字间距
         const titleText = titleDiv.createEl("h1", { 
             text: "Knowledge Insights", 
             attr: { 
@@ -209,10 +215,8 @@ class DesktopStatsHeatmapView extends ItemView {
         headerDiv.addEventListener('mouseleave', () => headerDiv.style.opacity = '0.9');
         headerDiv.addEventListener('click', startScanning);
 
-        // --- 核心画板：干净、无冗余边界的沉浸式卡片 ---
         this.wordsCanvas = container.createDiv({ 
             attr: { 
-                // 核心排版技术：align-items: baseline 保证不同字号文字底部对齐，视觉极其规整
                 style: 'display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: center; align-content: flex-start; align-items: baseline; background-color: var(--background-primary); border-radius: 24px; padding: 40px; box-shadow: 0 8px 24px rgba(0,0,0,0.03), 0 2px 8px rgba(0,0,0,0.02); flex: 1;' 
             } 
         });
@@ -238,9 +242,7 @@ class DesktopStatsHeatmapView extends ItemView {
             wordEl.setText(word);
             
             const opacity = getTextOpacity(value, maxWordCount);
-            // 字号收敛：14px 到 46px，取消夸张的巨型字
             const fontSize = Math.max(14, Math.min(46, 14 + (value/maxWordCount)*32));
-            // 阶梯式字重映射，构建 Apple 级视觉层级
             const fontWeight = value > maxWordCount * 0.6 ? '700' : (value > maxWordCount * 0.3 ? '600' : '500');
             
             wordEl.setAttr("style", `
@@ -252,7 +254,7 @@ class DesktopStatsHeatmapView extends ItemView {
                 line-height: 1.1;
                 user-select: none;
                 letter-spacing: -0.01em;
-                white-space: nowrap; /* 绝对禁止内部折行 */
+                white-space: nowrap; 
             `);
             
             wordEl.addEventListener('mouseenter', () => {
