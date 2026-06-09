@@ -47,9 +47,8 @@ class WordSphereEngine {
 
     animationFrameId: number = 0;
     isActive = true;
-    resizeObserver: any; // 修复 TS 严格模式：防止旧环境不认识 ResizeObserver
+    resizeObserver: any; 
 
-    // 修复 TS 严格模式：直接在声明时初始化箭头函数，防止 constructor 报错
     private onMouseMove = (e: MouseEvent) => {
         if (!this.isDragging) return;
         const deltaX = e.clientX - this.previousMouseX;
@@ -202,7 +201,7 @@ class WordSphereEngine {
             });
 
             this.ctx.beginPath();
-            this.ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+            this.ctx.arc(cx, cy, 3, 0, Math.PI * 2);
             this.ctx.fillStyle = colorNormal;
             this.ctx.fill();
 
@@ -219,11 +218,10 @@ class WordSphereEngine {
                     if (tag.renderState === 'focused') {
                         tag.el.style.opacity = '1';
                         tag.el.style.filter = 'blur(0px)';
-                        // 彻底修复反引号语法错误
                         tag.el.style.transform = `${baseTransform} scale(1.15)`;
                         tag.el.style.zIndex = '99999';
                         tag.el.style.color = 'var(--text-normal)';
-                        tag.el.style.textShadow = '0 8px 24px rgba(0,0,0,0.1)';
+                        tag.el.style.textShadow = '0 6px 16px rgba(0,0,0,0.1)';
                     } else if (tag.renderState === 'co-occurring') {
                         tag.el.style.opacity = '0.5';
                         tag.el.style.filter = 'blur(0px)';
@@ -233,7 +231,7 @@ class WordSphereEngine {
                         tag.el.style.textShadow = 'none';
                     } else {
                         tag.el.style.opacity = '0.04';
-                        tag.el.style.filter = `blur(6px)`;
+                        tag.el.style.filter = `blur(4px)`;
                         tag.el.style.transform = `${baseTransform} scale(0.9)`;
                         tag.el.style.zIndex = '10';
                         tag.el.style.color = 'var(--text-faint)';
@@ -249,7 +247,7 @@ class WordSphereEngine {
                         tag.el.style.color = 'var(--text-muted)'; 
                     } else {
                         opacity = 0.05 + 0.2 * ((item.zRatio + 1) / 1); 
-                        blur = Math.min(3.5, Math.abs(item.zRatio) * 3.5); 
+                        blur = Math.min(2.5, Math.abs(item.zRatio) * 2.5); 
                         tag.el.style.color = 'var(--text-faint)';
                     }
 
@@ -271,28 +269,28 @@ class WordSphereEngine {
 
     private drawConnectionLine(cx: number, cy: number, item: any, neutralRGB: string, normalColor: string, accentColor: string) {
         let lineOpacity = 0;
-        let lineWidth = 0.5;
+        let lineWidth = 0.4;
         let strokeStyle = `rgba(${neutralRGB}, `;
 
         if (this.isHoveringNode) {
             if (item.renderState === 'focused') {
                 lineOpacity = 0.3; 
-                lineWidth = 1.2;
+                lineWidth = 1;
                 strokeStyle = normalColor; 
             } else if (item.renderState === 'co-occurring') {
                 lineOpacity = 0.15; 
-                lineWidth = 0.8;
+                lineWidth = 0.6;
                 strokeStyle = `rgba(${neutralRGB}, `;
             } else {
                 lineOpacity = 0; 
             }
         } else {
             if (item.zRatio > 0) {
-                lineOpacity = 0.02 + 0.12 * item.zRatio; 
-                lineWidth = 0.5 + 0.5 * item.zRatio;
+                lineOpacity = 0.02 + 0.1 * item.zRatio; 
+                lineWidth = 0.4 + 0.4 * item.zRatio;
             } else {
                 lineOpacity = 0.02 * (1 - Math.abs(item.zRatio)); 
-                lineWidth = 0.5;
+                lineWidth = 0.4;
             }
         }
 
@@ -370,12 +368,12 @@ class WordContextModal extends Modal {
 
     async onOpen() {
         const { contentEl } = this; contentEl.empty();
-        this.modalEl.style.cssText = 'max-width: 850px; width: 90vw; border-radius: 24px; padding: 40px; box-shadow: 0 24px 60px rgba(0,0,0,0.06);';
+        this.modalEl.style.cssText = 'max-width: 850px; width: 90vw; border-radius: 20px; padding: 32px; box-shadow: 0 16px 40px rgba(0,0,0,0.08);';
 
-        contentEl.createEl('h2', { text: `「${this.word}」`, attr: { style: 'margin: 0 0 10px 0; font-size: 2em; font-weight: 850; color: var(--interactive-accent); font-family: "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -0.5px;' } });
-        contentEl.createEl('p', { text: `在 ${this.files.length} 篇笔记的正文中被提及：`, attr: { style: 'margin: 0 0 28px 0; color: var(--text-muted); font-size: 1.1em;' } });
+        contentEl.createEl('h2', { text: `「${this.word}」`, attr: { style: 'margin: 0 0 10px 0; font-size: 1.8em; font-weight: 700; color: var(--interactive-accent); font-family: "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -0.5px;' } });
+        contentEl.createEl('p', { text: `在 ${this.files.length} 篇笔记的正文中被提及：`, attr: { style: 'margin: 0 0 24px 0; color: var(--text-muted); font-size: 1em;' } });
 
-        const listContainer = contentEl.createDiv({ attr: { style: 'max-height: 62vh; overflow-y: auto; padding-right: 15px; display: flex; flex-direction: column; gap: 20px;' } });
+        const listContainer = contentEl.createDiv({ attr: { style: 'max-height: 60vh; overflow-y: auto; padding-right: 12px; display: flex; flex-direction: column; gap: 16px;' } });
 
         this.files.forEach(async (file) => {
             const content = await this.app.vault.cachedRead(file);
@@ -385,23 +383,23 @@ class WordContextModal extends Modal {
             const matches = rawContent.match(regex) || [];
 
             if (matches.length > 0) {
-                const card = listContainer.createDiv({ attr: { style: 'background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 16px; padding: 20px; cursor: pointer; transition: all 0.2s ease;' } });
-                card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--interactive-accent)'; card.style.transform = 'translateY(-3px)'; card.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.04)'; });
+                const card = listContainer.createDiv({ attr: { style: 'background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s ease;' } });
+                card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--interactive-accent)'; card.style.transform = 'translateY(-2px)'; card.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.04)'; });
                 card.addEventListener('mouseleave', () => { card.style.borderColor = 'var(--background-modifier-border)'; card.style.transform = 'translateY(0)'; card.style.boxShadow = 'none'; });
                 card.addEventListener('click', async () => { const leaf = this.app.workspace.getLeaf(false); await leaf.openFile(file); this.close(); });
 
-                const fileTitle = card.createEl('div', { attr: { style: 'font-weight: 800; font-size: 1.25em; margin-bottom: 16px; color: var(--text-normal); font-family: "SF Pro Text", "PingFang SC", sans-serif; display: flex; align-items: center;' } });
+                const fileTitle = card.createEl('div', { attr: { style: 'font-weight: 700; font-size: 1.1em; margin-bottom: 12px; color: var(--text-normal); font-family: "SF Pro Text", "PingFang SC", sans-serif; display: flex; align-items: center;' } });
                 const fileIconSpan = fileTitle.createEl('span', { attr: { style: 'margin-right: 8px; opacity: 0.7;' } });
                 setIcon(fileIconSpan, 'document'); fileTitle.appendChild(document.createTextNode(file.basename));
 
                 const displayMatches = matches.slice(0, 3);
                 for (let match of displayMatches) {
-                    const snippetDiv = card.createDiv({ attr: { style: 'font-size: 1em; color: var(--text-muted); line-height: 1.6; margin-bottom: 12px; background: var(--background-primary); padding: 10px 16px; border-radius: 10px;' } });
+                    const snippetDiv = card.createDiv({ attr: { style: 'font-size: 0.95em; color: var(--text-muted); line-height: 1.5; margin-bottom: 8px; background: var(--background-secondary); padding: 8px 12px; border-radius: 8px;' } });
                     const parts = match.split(new RegExp(`(${safeWord})`, 'gi'));
                     snippetDiv.appendChild(document.createTextNode('"...'));
                     parts.forEach(part => {
                         if (part.toLowerCase() === this.word.toLowerCase()) {
-                            snippetDiv.createEl('span', { text: part, attr: { style: 'color: #fff; background-color: var(--interactive-accent); padding: 2px 6px; border-radius: 6px; font-weight: bold; margin: 0 2px;' } });
+                            snippetDiv.createEl('span', { text: part, attr: { style: 'color: var(--text-normal); background-color: var(--background-modifier-hover); padding: 2px 4px; border-radius: 4px; font-weight: 600; margin: 0 2px;' } });
                         } else { snippetDiv.appendChild(document.createTextNode(part)); }
                     });
                     snippetDiv.appendChild(document.createTextNode('..."'));
@@ -424,15 +422,16 @@ class DesktopStatsHeatmapView extends ItemView {
         const container = this.containerEl.children[1]; container.empty();
         container.addClass('stats-heatmap-dashboard-container');
 
+        // 核心UI优化：减小内边距，完全适配半高的侧边栏
         container.setAttr('style', `
-            padding: 24px 16px; display: flex; flex-direction: column; height: 100%; overflow: hidden; 
+            padding: 12px; display: flex; flex-direction: column; height: 100%; overflow: hidden; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
             -webkit-font-smoothing: antialiased; background-color: var(--background-secondary);
         `);
 
         const headerDiv = container.createDiv({ 
             attr: { 
-                style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0; cursor: pointer; opacity: 0.85; transition: opacity 0.2s ease;',
+                style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-shrink: 0; cursor: pointer; opacity: 0.85; transition: opacity 0.2s ease;',
                 title: '点击重新构建突触'
             } 
         });
@@ -440,19 +439,20 @@ class DesktopStatsHeatmapView extends ItemView {
         const titleDiv = headerDiv.createDiv({
             attr: { style: 'display: flex; align-items: center; white-space: nowrap;' }
         });
-        const iconSpan = titleDiv.createEl('span', { attr: { style: 'width: 20px; height: 20px; color: var(--text-normal); margin-right: 10px; display: flex; align-items: center;' } });
+        const iconSpan = titleDiv.createEl('span', { attr: { style: 'width: 16px; height: 16px; color: var(--text-normal); margin-right: 8px; display: flex; align-items: center;' } });
         setIcon(iconSpan, 'network'); 
         
-        const titleText = titleDiv.createEl("h1", { 
+        // 核心UI优化：缩小标题字号，彻底融入 Obsidian 原生侧边栏风格
+        const titleText = titleDiv.createEl("span", { 
             text: "拓扑网络", 
             attr: { 
-                style: 'margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--text-normal); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;' 
+                style: 'margin: 0; font-size: 14px; font-weight: 600; color: var(--text-normal);' 
             } 
         });
         
         const contentWrapper = container.createDiv({ attr: { style: 'display: flex; flex-direction: column; flex: 1; min-height: 0;' } });
         const heatmapDiv = contentWrapper.createDiv({ 
-            attr: { style: 'flex: 1; display: flex; justify-content: center; align-items: center; background-color: var(--background-primary); border-radius: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.03); overflow: hidden; position: relative;' } 
+            attr: { style: 'flex: 1; display: flex; justify-content: center; align-items: center; background-color: var(--background-primary); border-radius: 12px; border: 1px solid var(--background-modifier-border); overflow: hidden; position: relative;' } 
         });
 
         const renderData = async () => {
@@ -466,8 +466,9 @@ class DesktopStatsHeatmapView extends ItemView {
             const heatmapWords = await analyzeVaultData(this.app);
             const maxWordCount = heatmapWords.length > 0 ? heatmapWords[0].value : 1;
 
-            const containerMinSide = Math.min(heatmapDiv.clientWidth || 250, heatmapDiv.clientHeight || 350);
-            const baseRadius = Math.max((containerMinSide / 2) * 0.75, 90);
+            // 核心修复：适配半高侧边栏，保底半径降低至 70px，绝不超出边界
+            const containerMinSide = Math.min(heatmapDiv.clientWidth || 250, heatmapDiv.clientHeight || 250);
+            const baseRadius = Math.max((containerMinSide / 2) * 0.7, 70);
 
             this.sphereEngine = new WordSphereEngine(heatmapDiv, baseRadius);
 
@@ -475,15 +476,16 @@ class DesktopStatsHeatmapView extends ItemView {
                 const wordEl = document.createElement('div');
                 wordEl.innerText = word;
                 
-                const fontSize = Math.max(12, Math.min(36, 12 + (value/maxWordCount)*24));
-                const fontWeight = value > maxWordCount * 0.6 ? '800' : (value > maxWordCount * 0.3 ? '600' : '500');
+                // 核心UI优化：全量缩小字号，防止在侧边栏中显得拥挤
+                const fontSize = Math.max(11, Math.min(26, 11 + (value/maxWordCount)*15));
+                const fontWeight = value > maxWordCount * 0.6 ? '700' : (value > maxWordCount * 0.3 ? '600' : '500');
                 const filePaths = new Set(files.map(f => f.path));
 
                 wordEl.setAttr("style", `
                     font-size: ${fontSize}px;
                     font-weight: ${fontWeight};
-                    letter-spacing: -0.5px;
-                    padding: 4px;
+                    letter-spacing: -0.2px;
+                    padding: 2px;
                     white-space: nowrap;
                     user-select: none;
                     transition: filter 0.2s, opacity 0.2s, color 0.2s; 
@@ -542,9 +544,25 @@ export default class DesktopStatsPlugin extends Plugin {
     async activateView() {
         const { workspace } = this.app;
         let existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_STATS_HEATMAP);
-        for (let i = 0; i < existingLeaves.length; i++) existingLeaves[i].detach(); 
+        let leaf: WorkspaceLeaf;
         
-        const leaf = workspace.getLeftLeaf(false);
-        if (leaf) { await leaf.setViewState({ type: VIEW_TYPE_STATS_HEATMAP, active: true }); workspace.revealLeaf(leaf); }
+        if (existingLeaves.length > 0) {
+            leaf = existingLeaves[0];
+        } else {
+            // ===============================================
+            // 核心突破：寻找文件列表，在它正下方劈出一块专属区域！
+            // ===============================================
+            const fileExplorerLeaves = workspace.getLeavesOfType('file-explorer');
+            if (fileExplorerLeaves.length > 0) {
+                // 以水平分割线切开 (即上下排列)，将拓扑网络挂载在文件列表下方
+                leaf = workspace.createLeafBySplit(fileExplorerLeaves[0], 'horizontal');
+            } else {
+                // 如果用户没开文件列表，则走默认逻辑
+                leaf = workspace.getLeftLeaf(false) || workspace.getLeaf(false);
+            }
+            await leaf.setViewState({ type: VIEW_TYPE_STATS_HEATMAP, active: true });
+        }
+        
+        workspace.revealLeaf(leaf);
     }
 }
