@@ -12,20 +12,19 @@ const STOP_WORDS = new Set([
     '各位', '谢谢', '由于', '其实', '只要', '目前', '开始'
 ]);
 
+// 核心重构：解耦逻辑坐标(lx,ly,lz)与渲染物理坐标(rx,ry,rz)，加入速度分量(vx,vy,vz)
 interface SphereNode {
     el: HTMLElement;
-    x: number;
-    y: number;
-    z: number;
-    theta: number;
-    phi: number;
+    lx: number; ly: number; lz: number; // 逻辑层：永远随星系匀速旋转
+    rx: number; ry: number; rz: number; // 物理层：受弹簧和斥力影响的真实位置
+    vx: number; vy: number; vz: number; // 弹簧速度分量
+    zRatio: number;
     baseFontSize: number;
     baseWeight: string;
     renderState: string;
     filePaths: Set<string>;
 }
 
-// --- 物理级 3D 星系引擎 (黄油级丝滑拖拽 + 宋体适配) ---
 class WordSphereEngine {
     container: HTMLElement;
     canvas: HTMLCanvasElement;
@@ -36,28 +35,33 @@ class WordSphereEngine {
     tags: SphereNode[] = [];
     
     isDragging = false;
-    isHoveringNode = false; 
+    hoveredTag: SphereNode | null = null; // 记录当前吸附的中心节点
     previousMouseX = 0; 
     previousMouseY = 0;
+    canvasMouseX = 0; 
+    canvasMouseY = 0;
     
     velocityX = 0.002; 
     velocityY = 0.002;
     targetMinSpeed = 0.0012; 
-    friction = 0.96; // 核心调优：增加滑行惯性阻尼，使得松手后漂移更自然持久
+    friction = 0.96; 
 
     animationFrameId: number = 0;
     isActive = true;
     resizeObserver: any; 
 
-    // 核心调优：低通滤波算法 (Low-pass Filter)，消除拖拽时的生硬感和微卡顿
     private onMouseMove = (e: MouseEvent) => {
+        const rect = this.container.getBoundingClientRect();
+        // 记录相对于画布中心的鼠标坐标，用于节点的绝对吸附
+        this.canvasMouseX = e.clientX - rect.left - rect.width / 2;
+        this.canvasMouseY = e.clientY - rect.top - rect.height / 2;
+
         if (!this.isDragging) return;
         const deltaX = e.clientX - this.previousMouseX;
         const deltaY = e.clientY - this.previousMouseY;
         this.previousMouseX = e.clientX;
         this.previousMouseY = e.clientY;
         
-        // 使用 0.4 的平滑系数，将鼠标的生硬位移转化为柔和的旋转速度
         this.velocityY = this.velocityY * 0.6 + (deltaX * 0.008) * 0.4; 
         this.velocityX = this.velocityX * 0.6 + (-deltaY * 0.008) * 0.4; 
     };
@@ -99,7 +103,6 @@ class WordSphereEngine {
         const rect = this.container.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return;
         
-        // 动态同步最新居中半径，完美适配侧边栏大小拉伸
         const containerMinSide = Math.min(rect.width, rect.height);
         this.radius = Math.max((containerMinSide / 2) * 0.8, 65);
 
@@ -116,7 +119,6 @@ class WordSphereEngine {
         tagEl.style.left = '50%';
         tagEl.style.top = '50%';
         tagEl.style.cursor = 'pointer';
-        // 开启底层硬件加速，彻底消灭渲染卡顿
         tagEl.style.willChange = 'transform, opacity, filter, color';
         tagEl.style.zIndex = '10'; 
         
@@ -127,13 +129,16 @@ class WordSphereEngine {
         const r = Math.sqrt(1 - y * y);
         const phi = (count % 50) * increment;
         
+        const x = Math.cos(phi) * r * this.radius;
+        const cy = y * this.radius;
+        const z = Math.sin(phi) * r * this.radius;
+
         this.tags.push({
             el: tagEl,
-            x: Math.cos(phi) * r * this.radius,
-            y: y * this.radius,
-            z: Math.sin(phi) * r * this.radius,
-            theta: Math.atan2(Math.sin(phi) * r * this.radius, Math.cos(phi) * r * this.radius),
-            phi: Math.acos(y),
+            lx: x, ly: cy, lz: z,
+            rx: x, ry: cy, rz: z, // 初始物理坐标等于逻辑坐标
+            vx: 0, vy: 0, vz: 0,
+            zRatio: z / this.radius,
             baseFontSize,
             baseWeight,
             renderState: 'normal',
@@ -166,26 +171,19 @@ class WordSphereEngine {
         const animate = () => {
             if (!this.isActive) return;
 
-            let baseSpeedX = 0.001; 
-            let baseSpeedY = 0.0012;
-
+            // 核心修复 1：哪怕有悬停，球也绝不刹车，保持惯性与匀速漂移
             if (!this.isDragging) {
-                if (this.isHoveringNode) {
-                    this.velocityX *= 0.85; // 更平滑的刹车
-                    this.velocityY *= 0.85;
-                } else {
-                    const speed = Math.sqrt(this.velocityX ** 2 + this.velocityY ** 2);
-                    if (speed > this.targetMinSpeed) {
-                        this.velocityX *= this.friction; 
-                        this.velocityY *= this.friction;
-                    } else if (speed > 0 && speed < this.targetMinSpeed) {
-                        const ratio = this.targetMinSpeed / speed;
-                        this.velocityX *= ratio;
-                        this.velocityY *= ratio;
-                    } else if (speed === 0) {
-                        this.velocityX = this.targetMinSpeed;
-                        this.velocityY = this.targetMinSpeed;
-                    }
+                const speed = Math.sqrt(this.velocityX ** 2 + this.velocityY ** 2);
+                if (speed > this.targetMinSpeed) {
+                    this.velocityX *= this.friction; 
+                    this.velocityY *= this.friction;
+                } else if (speed > 0 && speed < this.targetMinSpeed) {
+                    const ratio = this.targetMinSpeed / speed;
+                    this.velocityX *= ratio;
+                    this.velocityY *= ratio;
+                } else if (speed === 0) {
+                    this.velocityX = this.targetMinSpeed;
+                    this.velocityY = this.targetMinSpeed;
                 }
             }
 
@@ -197,62 +195,126 @@ class WordSphereEngine {
             const colorNormal = getComputedColor('--text-normal', '#333333');
             const neutralLineColor = '128, 128, 128'; 
 
-            const renderList = this.tags.map(tag => {
-                const x1 = tag.x * Math.cos(this.velocityY) - tag.z * Math.sin(this.velocityY);
-                const z1 = tag.z * Math.cos(this.velocityY) + tag.x * Math.sin(this.velocityY);
-                const y1 = tag.y * Math.cos(this.velocityX) - z1 * Math.sin(this.velocityX);
-                const z2 = z1 * Math.cos(this.velocityX) + tag.y * Math.sin(this.velocityX);
+            // 1. 更新底层逻辑系矩阵 (不受任何斥力和悬停影响，永远保持匀速转动)
+            this.tags.forEach(tag => {
+                const x1 = tag.lx * Math.cos(this.velocityY) - tag.lz * Math.sin(this.velocityY);
+                const z1 = tag.lz * Math.cos(this.velocityY) + tag.lx * Math.sin(this.velocityY);
+                const y1 = tag.ly * Math.cos(this.velocityX) - z1 * Math.sin(this.velocityX);
+                const z2 = z1 * Math.cos(this.velocityX) + tag.ly * Math.sin(this.velocityX);
+                tag.lx = x1; tag.ly = y1; tag.lz = z2;
+            });
+
+            // 2. 物理碰撞与弹簧引擎 (计算真实的渲染位置 rx, ry, rz)
+            this.tags.forEach(tag => {
+                let targetX = tag.lx;
+                let targetY = tag.ly;
+                let targetZ = tag.lz;
+
+                if (this.hoveredTag === tag) {
+                    // 主角：脱离星系，像磁铁一样死死吸附在鼠标指针下方，并拉到最前方
+                    targetX = this.canvasMouseX;
+                    targetY = this.canvasMouseY;
+                    targetZ = this.radius; 
+                } else if (this.hoveredTag) {
+                    // 配角：磁极斥力场 (Avoidance) -> 水流绕礁石效果
+                    const dx = tag.lx - this.hoveredTag.rx; 
+                    const dy = tag.ly - this.hoveredTag.ry;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    const avoidRadius = 65; // 排斥力场半径
+
+                    if (dist > 0 && dist < avoidRadius) {
+                        // 根据距离呈指数级施加平滑推力，防止生硬弹跳
+                        const force = Math.pow((avoidRadius - dist) / avoidRadius, 2); 
+                        targetX += (dx / dist) * force * 80;
+                        targetY += (dy / dist) * force * 80;
+                        targetZ -= force * 40; // 稍微往后压，增加三维避让感
+                    }
+                }
+
+                // 核心：超丝滑弹簧震荡算法
+                // Stiffness 控制拉力大小，Damping 控制阻尼（越低弹得越久）
+                const stiffness = 0.12; 
+                const damping = 0.72; // 0.72 提供极其完美、果冻般的 Q 弹恢复手感
                 
-                tag.x = x1; tag.y = y1; tag.z = z2;
-                // 实时归一化 Z 轴比例，确保球体收缩放大时景深算法依然精准
-                return { ...tag, zRatio: tag.z / this.radius };
-            }).sort((a, b) => a.z - b.z);
+                tag.vx += (targetX - tag.rx) * stiffness;
+                tag.vy += (targetY - tag.ry) * stiffness;
+                tag.vz += (targetZ - tag.rz) * stiffness;
+                
+                tag.vx *= damping;
+                tag.vy *= damping;
+                tag.vz *= damping;
+                
+                tag.rx += tag.vx;
+                tag.ry += tag.vy;
+                tag.rz += tag.vz;
+                
+                tag.zRatio = tag.rz / this.radius;
+            });
+
+            // 以真实的 Z 深度重新排序用于渲染遮挡
+            const renderList = [...this.tags].sort((a, b) => a.rz - b.rz);
 
             renderList.forEach(item => {
-                if (item.z >= 0) return;
+                if (item.rz >= 0) return;
                 this.drawConnectionLine(cx, cy, item, neutralLineColor, colorNormal, colorAccent);
             });
 
             this.ctx.beginPath();
-            this.ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); // 奇点变小，更加精致
+            this.ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); 
             this.ctx.fillStyle = colorNormal;
             this.ctx.fill();
 
             renderList.forEach(item => {
-                if (item.z < 0) return;
+                if (item.rz < 0) return;
                 this.drawConnectionLine(cx, cy, item, neutralLineColor, colorNormal, colorAccent);
             });
 
+            // 3. 渲染 DOM 与动画层级
             renderList.forEach(item => {
                 const tag = item;
-                const baseTransform = `translate(-50%, -50%) translate3d(${tag.x}px, ${tag.y}px, 0px)`;
+                const baseTransform = `translate(-50%, -50%) translate3d(${tag.rx}px, ${tag.ry}px, 0px)`;
                 
-                if (this.isHoveringNode) {
+                if (this.hoveredTag) {
                     if (tag.renderState === 'focused') {
+                        // 主角词汇：停滞、微微放大、保持原生极高清晰度
                         tag.el.style.opacity = '1';
                         tag.el.style.filter = 'blur(0px)';
-                        tag.el.style.transform = `${baseTransform} scale(1.15)`;
+                        tag.el.style.transform = `${baseTransform} scale(1.25)`;
                         tag.el.style.zIndex = '99999';
-                        tag.el.style.color = 'var(--text-normal)';
-                        tag.el.style.textShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                    } else if (tag.renderState === 'co-occurring') {
-                        tag.el.style.opacity = '0.6';
-                        tag.el.style.filter = 'blur(0px)';
-                        tag.el.style.transform = `${baseTransform} scale(1)`;
-                        tag.el.style.zIndex = '50000';
-                        tag.el.style.color = 'var(--text-muted)';
-                        tag.el.style.textShadow = 'none';
+                        tag.el.style.color = 'var(--text-normal)'; // 保持原色，不突兀变色
                     } else {
-                        tag.el.style.opacity = '0.06'; // 聚光灯下无关词汇更暗淡，拉开视觉层次
-                        tag.el.style.filter = `blur(4px)`;
-                        tag.el.style.transform = `${baseTransform} scale(0.9)`;
-                        tag.el.style.zIndex = '10';
-                        tag.el.style.color = 'var(--text-faint)';
-                        tag.el.style.textShadow = 'none';
+                        // 其他词汇：略微缩小、颜色变浅，景深算法继续生效
+                        const scale = (this.radius + tag.rz) / (2 * this.radius); 
+                        // 缩小 0.8 倍为背景
+                        const finalScale = (0.65 + 0.5 * scale) * 0.8; 
+                        
+                        // 透明度骤降以凸显主角
+                        let opacity = 0; let blur = 0;
+                        if (item.zRatio > 0.4) {
+                            opacity = 0.45; blur = 0; // 最前排变淡
+                        } else if (item.zRatio > 0) {
+                            opacity = 0.25; blur = 1;
+                        } else {
+                            opacity = 0.08; blur = Math.min(3.5, Math.abs(item.zRatio) * 3.5); 
+                        }
+
+                        // 保留突触网络的高亮提示
+                        if (tag.renderState === 'co-occurring') {
+                            opacity = Math.max(opacity, 0.5); // 关联词汇强行提亮
+                            tag.el.style.color = 'var(--interactive-accent)';
+                            blur = 0;
+                        } else {
+                            tag.el.style.color = 'var(--text-muted)';
+                        }
+
+                        tag.el.style.transform = `${baseTransform} scale(${finalScale})`;
+                        tag.el.style.opacity = opacity.toString();
+                        tag.el.style.filter = `blur(${blur}px)`;
+                        tag.el.style.zIndex = Math.round(tag.rz + this.radius).toString();
                     }
                 } else {
+                    // 全局未悬停：普通景深状态
                     let opacity = 0; let blur = 0;
-                    // 宋体景深优化：由于宋体笔画较细，整体提高最低可见度和对比度
                     if (item.zRatio > 0.4) {
                         opacity = 0.95; blur = 0;
                         tag.el.style.color = 'var(--text-normal)'; 
@@ -260,18 +322,18 @@ class WordSphereEngine {
                         opacity = 0.5 + 0.45 * (item.zRatio / 0.4); blur = 0;
                         tag.el.style.color = 'var(--text-muted)'; 
                     } else {
-                        opacity = 0.12 + 0.38 * ((item.zRatio + 1) / 1); // 最低透明度提至 12% 保证可读
+                        opacity = 0.12 + 0.38 * ((item.zRatio + 1) / 1); 
                         blur = Math.min(2.5, Math.abs(item.zRatio) * 2.5); 
                         tag.el.style.color = 'var(--text-faint)';
                     }
 
-                    const scale = (this.radius + tag.z) / (2 * this.radius); 
-                    const finalScale = 0.65 + 0.5 * scale; // 整体缩放比例更克制
+                    const scale = (this.radius + tag.rz) / (2 * this.radius); 
+                    const finalScale = 0.65 + 0.5 * scale; 
 
                     tag.el.style.transform = `${baseTransform} scale(${finalScale})`;
                     tag.el.style.opacity = opacity.toString();
                     tag.el.style.filter = `blur(${blur}px)`;
-                    tag.el.style.zIndex = Math.round(tag.z + this.radius).toString();
+                    tag.el.style.zIndex = Math.round(tag.rz + this.radius).toString();
                 }
             });
 
@@ -281,22 +343,22 @@ class WordSphereEngine {
         animate();
     }
 
-    private drawConnectionLine(cx: number, cy: number, item: any, neutralRGB: string, normalColor: string, accentColor: string) {
+    private drawConnectionLine(cx: number, cy: number, item: SphereNode, neutralRGB: string, normalColor: string, accentColor: string) {
         let lineOpacity = 0;
         let lineWidth = 0.4;
         let strokeStyle = `rgba(${neutralRGB}, `;
 
-        if (this.isHoveringNode) {
+        if (this.hoveredTag) {
             if (item.renderState === 'focused') {
                 lineOpacity = 0.35; 
                 lineWidth = 1;
                 strokeStyle = normalColor; 
             } else if (item.renderState === 'co-occurring') {
-                lineOpacity = 0.15; 
-                lineWidth = 0.6;
-                strokeStyle = `rgba(${neutralRGB}, `;
+                lineOpacity = 0.2; 
+                lineWidth = 0.8;
+                strokeStyle = accentColor; // 连线使用高亮色
             } else {
-                lineOpacity = 0; 
+                lineOpacity = 0; // 无关连线彻底隐身
             }
         } else {
             if (item.zRatio > 0) {
@@ -312,7 +374,8 @@ class WordSphereEngine {
 
         this.ctx.beginPath();
         this.ctx.moveTo(cx, cy);
-        this.ctx.lineTo(cx + item.x, cy + item.y);
+        // 使用渲染的物理坐标 rx ry 绘制具有弹跳感的连线
+        this.ctx.lineTo(cx + item.rx, cy + item.ry);
         this.ctx.strokeStyle = strokeStyle.includes('rgba') ? `${strokeStyle}${lineOpacity})` : strokeStyle;
         this.ctx.lineWidth = lineWidth;
         this.ctx.stroke();
@@ -436,7 +499,6 @@ class DesktopStatsHeatmapView extends ItemView {
         const container = this.containerEl.children[1]; container.empty();
         container.addClass('stats-heatmap-dashboard-container');
 
-        // 极限压缩内边距，让侧边栏利用率最大化
         container.setAttr('style', `
             padding: 8px; display: flex; flex-direction: column; height: 100%; overflow: hidden; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -459,7 +521,6 @@ class DesktopStatsHeatmapView extends ItemView {
         const titleText = titleDiv.createEl("span", { 
             text: "拓扑网络", 
             attr: { 
-                // 标题也一并切换为经典的宋体衬线字风
                 style: 'margin: 0; font-size: 13px; font-weight: 600; color: var(--text-muted); font-family: "SimSun", "STSong", "Songti SC", serif; letter-spacing: 0.5px;' 
             } 
         });
@@ -482,7 +543,7 @@ class DesktopStatsHeatmapView extends ItemView {
             const maxWordCount = heatmapWords.length > 0 ? heatmapWords[0].value : 1;
 
             const containerMinSide = Math.min(heatmapDiv.clientWidth || 250, heatmapDiv.clientHeight || 250);
-            const baseRadius = Math.max((containerMinSide / 2) * 0.8, 65); // 动态缩小比例，防止触碰边界
+            const baseRadius = Math.max((containerMinSide / 2) * 0.8, 65); 
 
             this.sphereEngine = new WordSphereEngine(heatmapDiv, baseRadius);
 
@@ -490,12 +551,11 @@ class DesktopStatsHeatmapView extends ItemView {
                 const wordEl = document.createElement('div');
                 wordEl.innerText = word;
                 
-                // 宋体字号策略：13px 到 28px，克制不浮夸
                 const fontSize = Math.max(13, Math.min(28, 13 + (value/maxWordCount)*15));
                 const fontWeight = value > maxWordCount * 0.6 ? '700' : '400'; 
                 const filePaths = new Set(files.map(f => f.path));
 
-                // 核心字体替换：应用 SimSun，增加学术排版的高级感
+                // 保留高级宋体，取消原生 DOM scale 动画改由 JS 接管，提升流畅度
                 wordEl.setAttr("style", `
                     font-family: "SimSun", "STSong", "Songti SC", serif;
                     font-size: ${fontSize}px;
@@ -512,10 +572,11 @@ class DesktopStatsHeatmapView extends ItemView {
                 this.sphereEngine!.addTag(wordEl, fontSize, fontWeight, filePaths);
             });
 
+            // 核心事件：极其干净的交互派发
             this.sphereEngine.tags.forEach(tag => {
                 const node = tag;
                 node.el.addEventListener('mouseenter', () => {
-                    this.sphereEngine!.isHoveringNode = true;
+                    this.sphereEngine!.hoveredTag = node; // 核心！锁定吸附节点
                     this.sphereEngine!.tags.forEach(other => {
                         let isCoOccurring = false;
                         for (let p of other.filePaths) { if (node.filePaths.has(p)) { isCoOccurring = true; break; } }
@@ -527,7 +588,7 @@ class DesktopStatsHeatmapView extends ItemView {
                 });
                 
                 node.el.addEventListener('mouseleave', () => {
-                    this.sphereEngine!.isHoveringNode = false;
+                    this.sphereEngine!.hoveredTag = null; // 解除吸附，触发弹簧回退
                     this.sphereEngine!.tags.forEach(other => other.renderState = 'normal');
                 });
             });
