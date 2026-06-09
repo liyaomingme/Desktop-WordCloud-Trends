@@ -77,13 +77,20 @@ async function analyzeVaultData(app: App) {
     };
 }
 
-// --- 手写 Apple 原生蓝色系颜色插值引擎 ---
-function getHeatmapColor(value: number, max: number): string {
+// --- 热力图网格颜色引擎 ---
+function getGridHeatmapColor(value: number, max: number): string {
     if (value === 0) {
-        return 'rgba(var(--text-muted-rgb), 0.08)'; 
+        return 'var(--background-modifier-border)'; // 适配主题的极淡描边色
     }
     const ratio = Math.min(value / max, 1);
     const opacity = 0.25 + (ratio * 0.75); 
+    return `rgba(0, 122, 255, ${opacity})`;
+}
+
+// --- 热力词纯文字颜色引擎（提高文字可读性的基础透明度） ---
+function getTextHeatmapColor(value: number, max: number): string {
+    const ratio = Math.min(value / max, 1);
+    const opacity = 0.45 + (ratio * 0.55); // 文字基础透明度更高，确保浅色主题下也能看清
     return `rgba(0, 122, 255, ${opacity})`;
 }
 
@@ -102,53 +109,55 @@ class DesktopStatsHeatmapView extends ItemView {
         container.empty();
         container.addClass('stats-heatmap-dashboard-container');
 
-        // 应用高分辨率全屏铺满 CSS，开启 Y 轴滚动条以容纳两大板块
+        // 应用高分辨率全屏铺满 CSS，去除繁琐的边距，贴合原生质感
         container.setAttr('style', `
-            padding: 20px;
+            padding: 24px;
             display: flex;
             flex-direction: column;
             height: 100%;
             overflow-y: auto;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
             -webkit-font-smoothing: antialiased;
+            background-color: var(--background-secondary);
         `);
 
-        // 顶部导航栏
-        const headerDiv = container.createDiv({ attr: { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 15px; flex-shrink: 0;' } });
-        headerDiv.createEl("h2", { text: "知识资产全景热力", attr: { style: 'margin: 0; font-size: 1.4em; font-weight: 600;' } });
-        const refreshBtn = headerDiv.createEl("button", { text: "重新抓取", attr: { style: 'padding: 6px 14px; cursor: pointer; background-color: var(--interactive-accent); color: var(--text-on-accent); border-radius: 6px; border: none; font-size: 0.9em;' } });
+        // 极简顶部标题（去掉下划线，完全留白）
+        const headerDiv = container.createDiv({ attr: { style: 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-shrink: 0;' } });
+        headerDiv.createEl("h2", { text: "知识资产全景热力", attr: { style: 'margin: 0; font-size: 1.5em; font-weight: 600; letter-spacing: -0.5px;' } });
+        const refreshBtn = headerDiv.createEl("button", { text: "重新计算", attr: { style: 'padding: 6px 16px; cursor: pointer; background-color: var(--interactive-accent); color: var(--text-on-accent); border-radius: 20px; border: none; font-size: 0.85em; font-weight: 500; transition: opacity 0.2s;' } });
         
-        // 核心内容区：采用 Flex Column 纵向排版两大模块
+        // 核心内容区
         const contentWrapper = container.createDiv({ attr: { style: 'display: flex; flex-direction: column; gap: 24px; flex: 1;' } });
 
-        // --- 模块 1：近一年产出活跃度 (网格) ---
+        // --- 模块 1：近一年产出活跃度 (完美复刻日历卡片质感：大圆角，无描边，柔和散影) ---
         const heatmapDiv = contentWrapper.createDiv({ 
-            attr: { style: 'display: flex; flex-direction: column; background-color: var(--background-primary-alt); border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);' } 
+            attr: { style: 'display: flex; flex-direction: column; background-color: var(--background-primary); border-radius: 20px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.02);' } 
         });
-        heatmapDiv.createEl("h3", { text: "近一年产出活跃度", attr: { style: 'margin: 0 0 16px 0; font-size: 1.05em; color: var(--text-muted); text-align: center; font-weight: 500;' } });
+        heatmapDiv.createEl("h3", { text: "近一年产出活跃度", attr: { style: 'margin: 0 0 20px 0; font-size: 1.05em; color: var(--text-muted); font-weight: 500;' } });
         const heatmapWrapper = heatmapDiv.createDiv({ 
-            attr: { style: 'display: flex; gap: 4px; overflow-x: auto; padding-bottom: 8px; width: 100%; align-items: center; justify-content: flex-start;' } 
+            attr: { style: 'display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; width: 100%; align-items: center; justify-content: flex-start;' } 
         });
 
-        // --- 模块 2：核心概念热力矩阵 (词汇胶囊) ---
+        // --- 模块 2：核心概念印刷体矩阵 ---
         const wordsDiv = contentWrapper.createDiv({ 
-            attr: { style: 'display: flex; flex-direction: column; background-color: var(--background-primary-alt); border: 1px solid var(--background-modifier-border); border-radius: 12px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); flex: 1;' } 
+            attr: { style: 'display: flex; flex-direction: column; background-color: var(--background-primary); border-radius: 20px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.02); flex: 1;' } 
         });
-        wordsDiv.createEl("h3", { text: "核心概念热力矩阵", attr: { style: 'margin: 0 0 16px 0; font-size: 1.05em; color: var(--text-muted); text-align: center; font-weight: 500;' } });
+        wordsDiv.createEl("h3", { text: "核心概念网络", attr: { style: 'margin: 0 0 24px 0; font-size: 1.05em; color: var(--text-muted); font-weight: 500;' } });
         const wordsWrapper = wordsDiv.createDiv({ 
-            attr: { style: 'display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-content: flex-start;' } 
+            attr: { style: 'display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-content: flex-start; align-items: baseline;' } 
         });
 
         const renderData = async () => {
-            refreshBtn.innerText = "数据计算中...";
+            refreshBtn.innerText = "计算中...";
             refreshBtn.disabled = true;
+            refreshBtn.style.opacity = '0.5';
             heatmapWrapper.empty();
             wordsWrapper.empty();
             
             const { heatmapWords, dateTrend } = await analyzeVaultData(this.app);
 
             // ==========================================
-            // 渲染模块 1：网格热力图
+            // 渲染模块 1：极简网格热力图
             // ==========================================
             const endDate = new Date();
             const startDate = new Date();
@@ -178,20 +187,21 @@ class DesktopStatsHeatmapView extends ItemView {
             if (currentWeek.length > 0) weeks.push(currentWeek);
 
             weeks.forEach(week => {
-                const col = heatmapWrapper.createDiv({ attr: { style: 'display: flex; flex-direction: column; gap: 4px;' } });
+                const col = heatmapWrapper.createDiv({ attr: { style: 'display: flex; flex-direction: column; gap: 5px;' } });
                 week.forEach(day => {
-                    const bgColor = getHeatmapColor(day.count, maxGridCount);
+                    const bgColor = getGridHeatmapColor(day.count, maxGridCount);
                     const cell = col.createDiv({
-                        attr: { style: `width: 12px; height: 12px; background-color: ${bgColor}; border-radius: 3px; cursor: pointer; transition: transform 0.1s; border: 1px solid rgba(0,0,0,0.05);` }
+                        // 小方块使用更精致的 12px 和更柔和的 3px 圆角
+                        attr: { style: `width: 12px; height: 12px; background-color: ${bgColor}; border-radius: 3px; cursor: pointer; transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);` }
                     });
                     cell.setAttr('title', `${day.date}: 产出 ${day.count} 篇`);
-                    cell.addEventListener('mouseenter', () => cell.style.transform = 'scale(1.2)');
+                    cell.addEventListener('mouseenter', () => cell.style.transform = 'scale(1.3)');
                     cell.addEventListener('mouseleave', () => cell.style.transform = 'scale(1)');
                 });
             });
 
             // ==========================================
-            // 渲染模块 2：胶囊词汇热力图
+            // 渲染模块 2：纯粹印刷体艺术热力词 (Typographic Word Cloud)
             // ==========================================
             const maxWordCount = heatmapWords.length > 0 ? heatmapWords[0].value : 1;
 
@@ -199,36 +209,38 @@ class DesktopStatsHeatmapView extends ItemView {
                 const wordEl = wordsWrapper.createDiv();
                 wordEl.setText(word);
                 
-                const bgColor = getHeatmapColor(value, maxWordCount);
-                // 优化文字颜色：在浅色背景下使用原生文字色，深色背景下使用纯白
-                const textColor = value > maxWordCount * 0.4 ? '#ffffff' : 'var(--text-normal)';
+                const textColor = getTextHeatmapColor(value, maxWordCount);
+                // 彻底抛弃背景，依靠字号(13px-32px)和字重(400-700)建立信息层级
+                const fontSize = Math.max(13, Math.min(32, 12 + (value/maxWordCount)*20));
+                const fontWeight = value > maxWordCount * 0.4 ? '700' : '500';
                 
                 wordEl.setAttr("style", `
-                    background-color: ${bgColor}; 
                     color: ${textColor}; 
-                    padding: 4px 12px; 
-                    border-radius: 14px; 
-                    font-size: ${Math.max(12, Math.min(22, 11 + (value/maxWordCount)*11))}px;
-                    font-weight: 500;
+                    padding: 4px 8px; 
+                    font-size: ${fontSize}px;
+                    font-weight: ${fontWeight};
                     cursor: pointer;
-                    transition: transform 0.2s ease, box-shadow 0.2s ease;
-                    border: 1px solid var(--background-modifier-border);
+                    transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+                    line-height: 1.2;
+                    user-select: none;
                 `);
                 
                 wordEl.addEventListener('mouseenter', () => {
-                    wordEl.style.transform = 'translateY(-2px)';
-                    wordEl.style.boxShadow = '0 4px 8px rgba(0, 122, 255, 0.15)';
+                    // 鼠标悬浮时：文字轻微放大，并散发对应颜色的辉光，极其优雅
+                    wordEl.style.transform = 'scale(1.15)';
+                    wordEl.style.textShadow = `0 6px 16px rgba(0, 122, 255, 0.35)`;
                     new Notice(`【${word}】: 出现 ${value} 次`);
                 });
                 
                 wordEl.addEventListener('mouseleave', () => {
-                    wordEl.style.transform = 'translateY(0)';
-                    wordEl.style.boxShadow = 'none';
+                    wordEl.style.transform = 'scale(1)';
+                    wordEl.style.textShadow = 'none';
                 });
             });
 
-            refreshBtn.innerText = "重新抓取";
+            refreshBtn.innerText = "重新计算";
             refreshBtn.disabled = false;
+            refreshBtn.style.opacity = '1';
         };
 
         refreshBtn.addEventListener('click', renderData);
